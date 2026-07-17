@@ -1,0 +1,598 @@
+// This is your Prisma schema file
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client"
+  output          = "../generated/prisma"
+  moduleFormat    = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============= ENUMS =============
+enum FrequencyType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum HabitUnit {
+  TIMES
+  MINUTES
+  HOURS
+  PAGES
+  KILOMETERS
+  REPETITIONS
+  SESSIONS
+  CUSTOM
+}
+
+enum NotificationType {
+  REMINDER
+  STREAK_WARNING
+  ACHIEVEMENT
+  SOCIAL
+  SYSTEM
+}
+
+enum AchievementCategory {
+  STREAK
+  COMPLETION
+  MILESTONE
+  CHALLENGE
+  SOCIAL
+}
+
+enum UserLevel {
+  BEGINNER
+  CONSISTENT
+  MASTER
+  PRO
+  EXPERT
+  EPIC
+  LEGENDARY
+}
+
+enum ReminderStatus {
+  SENT
+  OPENED
+  SNOOZED
+  DISMISSED
+}
+
+enum Language {
+  ENGLISH
+  BURMESE
+}
+// ============= CORE MODELS =============
+
+model User {
+  id                String              @id @default(uuid())
+  name              String
+  email             String              @unique
+  password          String?
+  avatar            String?
+  timezone          String              @default("UTC")
+  isGuest           Boolean             @default(false)
+  level             UserLevel           @default(BEGINNER)
+  xp                Int                 @default(0)
+  currentStreak     Int                 @default(0) // Global streak across all habits
+  longestStreak     Int                 @default(0)
+  refreshToken      String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  lastActiveAt      DateTime            @default(now())
+  
+  habits            Habit[]
+  categories        Category[]
+  tags              Tag[]
+  completions       HabitCompletion[]
+  achievements      UserAchievement[]
+  notifications     Notification[]
+  dailySummaries    DailySummary[]
+  xpTransactions    XPTransaction[]
+  socialConnections SocialConnection[]   @relation("Following")
+  socialFollowers   SocialConnection[]   @relation("Followers")
+  sharedAchievements SharedAchievement[]
+  userChallenges    UserChallenge[]
+  premium           PremiumSubscription?
+  userPreferences   UserPreference?
+  userAnalytics     UserAnalytics?
+  backups           Backup[]
+  reminderLogs      ReminderLog[]
+  challenges        Challenge[]
+
+  @@index([email])
+  @@index([level, xp])
+  @@index([lastActiveAt])
+}
+
+// ============= HABIT MANAGEMENT =============
+
+model Habit {
+  id                String              @id @default(uuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  
+  title             String
+  description       String?
+  icon              String
+  color             String
+  
+  // Habit type
+  frequencyType     FrequencyType       @default(DAILY)
+  target            Int                 @default(1) // How many times per frequency period
+  unit              HabitUnit           @default(TIMES)
+  customSchedule    Json?               // Stores complex schedules: { "days": [1,3,5], "weeks": [1,3], "monthDay": 15 }
+  selectedDays      DayOfWeek[]         // For weekly habits
+  
+  // Tracking
+  isArchived        Boolean             @default(false)
+  isDeleted         Boolean             @default(false)
+  
+  // Streak
+  currentStreak     Int                 @default(0)
+  longestStreak     Int                 @default(0)
+  lastCompletedAt   DateTime?
+  
+  // Organization
+  categoryId        String?
+  category          Category?           @relation(fields: [categoryId], references: [id])
+  tags              HabitTag[]
+  
+  // Metadata 
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  
+  completions       HabitCompletion[]
+  reminders         Reminder[]
+  habitAnalytics    HabitAnalytics?
+  challengeEntries  ChallengeHabit[]
+
+  @@index([userId])
+  @@index([userId, isArchived])
+  @@index([userId, isDeleted])
+  @@index([userId, categoryId])
+  @@index([frequencyType])
+  @@unique([userId, title, isDeleted]) // Prevent duplicate habit names (excluding deleted)
+}
+
+model HabitCompletion {
+  id                String              @id @default(uuid())
+  habitId           String
+  habit             Habit               @relation(fields: [habitId], references: [id])
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  
+  completedAt       DateTime            @default(now())
+  value             Int                 @default(1) // For multi-unit habits
+  notes             String?
+  
+  // For undo functionality
+  isUndone          Boolean             @default(false)
+  undoneAt          DateTime?
+  
+  createdAt         DateTime            @default(now())
+  
+  // XP earned from this completion
+  xpEarned          Int                 @default(20)
+
+  @@index([habitId])
+  @@index([userId])
+  @@index([completedAt])
+  @@index([habitId, completedAt])
+  @@unique([habitId, completedAt]) // Prevent duplicate completions at same time
+}
+
+// ============= CATEGORIES & TAGS =============
+
+model Category {
+  id                String              @id @default(uuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  name              String
+  icon              String?
+  color             String?
+  
+  habits            Habit[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Tag {
+  id                String              @id @default(uuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  name              String
+  color             String?
+  
+  habits            HabitTag[]
+  createdAt         DateTime            @default(now())
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model HabitTag {
+  id                String              @id @default(uuid())
+  habitId           String
+  habit             Habit               @relation(fields: [habitId], references: [id])
+  tagId             String
+  tag               Tag                 @relation(fields: [tagId], references: [id])
+
+  @@unique([habitId, tagId])
+}
+
+// ============= REMINDERS =============
+
+model Reminder {
+  id                String              @id @default(uuid())
+  habitId           String
+  habit             Habit               @relation(fields: [habitId], references: [id])
+  
+  hour              Int
+  minute            Int
+  days              DayOfWeek[]         // Which days to remind
+  enabled           Boolean             @default(true)
+  
+  // Smart reminders
+  isSmart           Boolean             @default(false) // AI-based reminder timing
+  smartWindowStart  DateTime?           // Window when reminder can be sent
+  smartWindowEnd    DateTime?
+  
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  reminderLogs      ReminderLog[]
+
+  @@index([habitId])
+  @@index([enabled])
+}
+
+model ReminderLog {
+  id                String              @id @default(uuid())
+  reminderId        String
+  reminder          Reminder            @relation(fields: [reminderId], references: [id])
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  
+  sentAt            DateTime            @default(now())
+  status            ReminderStatus      @default(SENT)
+  snoozeDuration    Int?                // Minutes
+  openedAt          DateTime?
+  
+  @@index([userId])
+  @@index([sentAt])
+}
+
+// ============= ACHIEVEMENTS & XP =============
+
+model Achievement {
+  id                String              @id @default(uuid())
+  title             String              // e.g. "50 Days of Habit"
+  description       String              // e.g. "Complete 50 days of a habit to achieve this achievement"
+  icon              String
+  category          AchievementCategory
+  xpReward          Int                 @default(50)
+  condition         Json                // Stores condition rules: { "type": "streak", "days": 7 }
+  
+  tier              Int                 @default(1)
+  tierName          String              @default("Bronze")
+  
+  userAchievements  UserAchievement[]
+  challenges        Challenge[]
+
+  createdAt         DateTime            @default(now())
+
+  @@index([category])
+}
+
+model UserAchievement {
+  id                String              @id @default(uuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  achievementId     String
+  achievement       Achievement         @relation(fields: [achievementId], references: [id])
+  
+  earnedAt          DateTime            @default(now())
+  isShared          Boolean             @default(false)
+  sharedAt          DateTime?
+  sharedAchievement SharedAchievement?
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+  @@index([earnedAt])
+}
+
+model XPTransaction {
+  id                String              @id @default(uuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  
+  amount            Int
+  reason            String              // COMPLETION, STREAK_BONUS, ACHIEVEMENT, CHALLENGE
+  referenceId       String?             // ID of related entity (habit, achievement, etc.)
+  
+  createdAt         DateTime            @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model SharedAchievement {
+  id                String              @id @default(uuid())
+  userAchievementId String              @unique
+  userAchievement   UserAchievement     @relation(fields: [userAchievementId], references: [id])
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  
+  socialPlatform    String?             // TWITTER, FACEBOOK, etc.
+  shareUrl          String?
+  sharedAt          DateTime            @default(now())
+  likes             Int                 @default(0)
+
+  @@index([userId])
+}
+
+// ============= CALENDAR & STREAK =============
+
+model DailySummary {
+  id                String              @id @default(uuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  
+  date              DateTime            @default(now())
+  habitsCompleted   Int                 @default(0)
+  totalHabits       Int                 @default(0)
+  completionRate    Float               @default(0)
+  xpEarned          Int                 @default(0)
+  streakAchieved    Boolean             @default(false)
+  
+  // Freeze streak (premium feature)
+  isFrozen          Boolean             @default(false)
+  freezeReason      String?
+  
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@index([userId, completionRate])
+}
+
+// ============= ANALYTICS =============
+
+model HabitAnalytics {
+  id                String              @id @default(uuid())
+  habitId           String              @unique
+  habit             Habit               @relation(fields: [habitId], references: [id])
+  
+  // Insights
+  bestDay           DayOfWeek?
+  bestTimeHour      Int?
+  averageTimeHour   Float?
+  completionRate    Float               @default(0)
+  
+  // Stats
+  totalCompletions  Int                 @default(0)
+  totalMissed       Int                 @default(0)
+  longestStreak     Int                 @default(0)
+  
+  // Trend
+  weeklyTrend       Json?               // { "week1": 0.8, "week2": 0.9 }
+  monthlyTrend      Json?
+  
+  updatedAt         DateTime            @updatedAt
+
+  @@index([completionRate])
+}
+
+model UserAnalytics {
+  id                String              @id @default(uuid())
+  userId            String              @unique
+  user              User                @relation(fields: [userId], references: [id])
+  
+  // Overall stats
+  totalHabitsCreated Int               @default(0)
+  totalCompletions  Int                 @default(0)
+  totalXPEarned     Int                 @default(0)
+  averageDailyRate  Float               @default(0)
+  
+  // Time-based insights
+  mostProductiveDay DayOfWeek?
+  mostProductiveHour Int?
+  bestMonth         Int?                // Month number (1-12)
+  
+  // Success rates by category
+  categorySuccess   Json?               // { "health": 0.85, "fitness": 0.92 }
+  
+  updatedAt         DateTime            @updatedAt
+}
+
+// ============= SOCIAL FEATURES =============
+
+model SocialConnection {
+  id                String              @id @default(uuid())
+  followerId        String
+  follower          User                @relation("Followers", fields: [followerId], references: [id])
+  followingId       String
+  following         User                @relation("Following", fields: [followingId], references: [id])
+  
+  status            String              @default("PENDING") // PENDING, ACCEPTED, BLOCKED
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([followerId, followingId])
+  @@index([followerId, status])
+  @@index([followingId, status])
+}
+
+model Challenge {
+  id                String              @id @default(uuid())
+  title             String
+  description       String?
+  icon              String
+  color             String
+  
+  // Challenge rules
+  durationDays      Int                 @default(30)
+  requiredHabits    Int                 @default(1)
+  startDate         DateTime
+  endDate           DateTime
+  
+  // XP & rewards
+  xpReward          Int                 @default(200)
+  achievementId     String?
+  achievement       Achievement?        @relation(fields: [achievementId], references: [id])
+  
+  createdBy         String
+  creator           User                @relation(fields: [createdBy], references: [id])
+  
+  isActive          Boolean             @default(true)
+  participants      UserChallenge[]
+  habits            ChallengeHabit[]
+  
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([isActive])
+  @@index([startDate, endDate])
+}
+
+model UserChallenge {
+  id                String              @id @default(uuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  challengeId       String
+  challenge         Challenge           @relation(fields: [challengeId], references: [id])
+  
+  joinedAt          DateTime            @default(now())
+  progress          Float               @default(0)
+  completedAt       DateTime?
+  xpEarned          Int                 @default(0)
+  
+  @@unique([userId, challengeId])
+  @@index([userId])
+  @@index([challengeId])
+}
+
+model ChallengeHabit {
+  id                String              @id @default(uuid())
+  challengeId       String
+  challenge         Challenge           @relation(fields: [challengeId], references: [id])
+  habitId           String
+  habit             Habit               @relation(fields: [habitId], references: [id])
+  
+  target            Int                 @default(1)
+  
+  @@unique([challengeId, habitId])
+}
+
+// ============= NOTIFICATIONS =============
+
+model Notification {
+  id                String              @id @default(uuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  
+  title             String
+  body              String
+  type              NotificationType    @default(SYSTEM)
+  actionLink        String?             // Deep link to app
+  imageUrl          String?
+  
+  read              Boolean             @default(false)
+  readAt            DateTime?
+  
+  // For scheduled notifications
+  scheduledFor      DateTime?
+  sentAt            DateTime?
+  
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([userId])
+  @@index([userId, read])
+  @@index([scheduledFor])
+  @@index([sentAt])
+}
+
+// ============= PREMIUM FEATURES =============
+
+model PremiumSubscription {
+  id                String              @id @default(uuid())
+  userId            String              @unique
+  user              User                @relation(fields: [userId], references: [id])
+  
+  plan              String              // MONTHLY, YEARLY, LIFETIME
+  status            String              // ACTIVE, EXPIRED, CANCELLED
+  startDate         DateTime            @default(now())
+  endDate           DateTime
+  
+  // Stripe/Payment details
+  stripeCustomerId  String?
+  stripeSubscriptionId String?
+  
+  features          Json?               // { "maxHabits": 0, "cloudSync": true, "widgets": true }
+  
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([status])
+  @@index([endDate])
+}
+
+model Backup {
+  id                String              @id @default(uuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  
+  backupDate        DateTime            @default(now())
+  fileSize          Int                 // In bytes
+  storageUrl        String
+  version           String
+  isRestored        Boolean             @default(false)
+  
+  @@index([userId])
+  @@index([backupDate])
+}
+
+// ============= USER PREFERENCES =============
+
+model UserPreference {
+  id                String              @id @default(uuid())
+  userId            String              @unique
+  user              User                @relation(fields: [userId], references: [id])
+  
+  // Notification preferences
+  emailReminders    Boolean             @default(true)
+  pushReminders     Boolean             @default(true)
+  language          Language            @default(ENGLISH)
+  achievementNotifications Boolean      @default(true)
+  
+  // Display preferences
+  defaultView       String              @default("DASHBOARD") // DASHBOARD, CALENDAR, LIST
+  weekStartsOn      DayOfWeek           @default(MONDAY)
+  
+  // Privacy
+  showPublicProfile Boolean             @default(false)
+  shareAchievements Boolean             @default(false)
+  
+  updatedAt         DateTime            @updatedAt
+}
