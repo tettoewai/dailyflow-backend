@@ -1,13 +1,15 @@
+import { UsersModule } from '@/users/users.module';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { UsersModule } from 'src/users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { jwtConstants } from './constants';
+import { GuestCleanUpService } from './guest-cleanup.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { RefreshTokenStrategy } from './strategies/refreshToken.strategy';
+import { PrismaService } from '@/prisma.service';
 
 @Module({
   imports: [
@@ -22,7 +24,14 @@ import { RefreshTokenStrategy } from './strategies/refreshToken.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, LocalStrategy, JwtStrategy, RefreshTokenStrategy],
+  providers: [
+    AuthService,
+    LocalStrategy,
+    JwtStrategy,
+    RefreshTokenStrategy,
+    GuestCleanUpService,
+    PrismaService,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

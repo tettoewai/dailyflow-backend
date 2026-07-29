@@ -5,11 +5,12 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { UsersService } from 'src/users/users.service';
+import { jwtConstants } from './constants';
 import { LogInDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { jwtConstants } from './constants';
-import { LoginGuestDto } from './dto/loginGuest.dto';
+import { v4 as uuidv4 } from 'uuid';
+import { UsersService } from '@/users/users.service';
+import { error } from 'console';
 
 @Injectable()
 export class AuthService {
@@ -60,7 +61,30 @@ export class AuthService {
     };
   }
 
-  async loginGuest(loginGuestDto: LoginGuestDto) {}
+  async loginGuest() {
+    const guestId = `guest_${uuidv4()}`;
+    const guestEmail = `${guestId}@guest.local`;
+    const guestName = `Guest ${Math.floor(Math.random() * 10000)}`;
+
+    const randomPassword = uuidv4();
+
+    const guestUser = await this.usersService.create(
+      guestEmail,
+      randomPassword,
+      guestName,
+      true,
+    );
+
+    const tokens = await this.getTokens(guestUser.id, guestUser.email);
+    await this.usersService.updateRefreshToken(
+      guestUser.id,
+      tokens.refresh_token,
+    );
+    return {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+    };
+  }
 
   async login(
     logInDto: LogInDto,
@@ -80,6 +104,43 @@ export class AuthService {
     return {
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
+    };
+  }
+
+  async convertGuest(userId: string, registerDto: RegisterDto) {
+    const user = await this.usersService.findById(userId);
+
+    if (!user || !user.isGuest) {
+      throw new BadRequestException('User is not a guest account');
+    }
+
+    const existingUser = await this.usersService.findByEmail(registerDto.email);
+
+    if (existingUser) {
+      throw new BadRequestException('Email already in use');
+    }
+
+    const updatedUser = await this.usersService.convertGuest(userId, {
+      email: registerDto.email,
+      name: registerDto.name,
+      userPassword: registerDto.password,
+    });
+
+    const tokens = await this.getTokens(updatedUser.id, updatedUser.email);
+    await this.usersService.updateRefreshToken(
+      updatedUser.id,
+      tokens.refresh_token,
+    );
+
+    return {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        isGuest: false,
+      },
     };
   }
 

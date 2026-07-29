@@ -1,11 +1,10 @@
+import { PrismaService } from '@/prisma.service';
 import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
-  NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { PrismaService } from 'src/prisma.service';
 
 @Injectable()
 export class UsersService {
@@ -62,7 +61,37 @@ export class UsersService {
     }
   }
 
-  async create(email: string, password: string, name: string) {
+  async convertGuest(
+    id: string,
+    {
+      email,
+      userPassword,
+      name,
+    }: { email: string; userPassword: string; name: string },
+  ) {
+    try {
+      const hashedPassword = await bcrypt.hash(userPassword, 10);
+      const { password, ...updatedUser } = await this.prisma.user.update({
+        where: { id },
+        data: {
+          email,
+          name,
+          password: hashedPassword,
+          isGuest: false,
+        },
+      });
+      return updatedUser;
+    } catch (error) {
+      throw new InternalServerErrorException('Failed to create user');
+    }
+  }
+
+  async create(
+    email: string,
+    password: string,
+    name: string,
+    isGuest: boolean = false,
+  ) {
     try {
       const hashedPassword = await bcrypt.hash(password, 10);
       return this.prisma.user.create({
@@ -70,6 +99,14 @@ export class UsersService {
           email,
           password: hashedPassword,
           name,
+          isGuest,
+          userPreferences: {
+            create: {
+              language: 'ENGLISH',
+              pushReminders: true,
+              emailReminders: true,
+            },
+          },
         },
       });
     } catch (error) {

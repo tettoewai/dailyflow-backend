@@ -6,7 +6,6 @@ import { LogInDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RefreshAuthGuard } from './guards/refresh-auth.guard';
-import { LoginGuestDto } from './dto/loginGuest.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -19,9 +18,9 @@ export class AuthController {
   }
 
   @Public()
-  @Post('login/guest')
-  async loginGuest(@Body() body: LoginGuestDto) {
-    return this.authService.loginGuest(body);
+  @Post('guest')
+  async loginGuest() {
+    return this.authService.loginGuest();
   }
 
   @Public()
@@ -39,6 +38,13 @@ export class AuthController {
   @Post('logout')
   async logout(@Request() req) {
     return this.authService.logout(req.user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('convert-guest')
+  @ApiOperation({ summary: 'Convert guest account to regular user' })
+  async convertGuest(@Request() req, @Body() body: RegisterDto) {
+    return this.authService.convertGuest(req.user.sub, body);
   }
 
   @Public()

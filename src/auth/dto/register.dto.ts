@@ -2,7 +2,7 @@ import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsEmail()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'Email must be provide' })
   email!: string;
 
   @IsString()
