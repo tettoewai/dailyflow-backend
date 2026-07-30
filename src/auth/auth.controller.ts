@@ -6,6 +6,7 @@ import { LogInDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RefreshAuthGuard } from './guards/refresh-auth.guard';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('auth')
 export class AuthController {
@@ -41,6 +42,7 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60 } })
   @Post('convert-guest')
   @ApiOperation({ summary: 'Convert guest account to regular user' })
   async convertGuest(@Request() req, @Body() body: RegisterDto) {
