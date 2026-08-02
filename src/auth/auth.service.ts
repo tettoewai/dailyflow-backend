@@ -1,3 +1,4 @@
+import { UserService } from '@/user/user.service';
 import {
   BadRequestException,
   Injectable,
@@ -5,17 +6,15 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { v4 as uuidv4 } from 'uuid';
 import { jwtConstants } from './constants';
 import { LogInDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { v4 as uuidv4 } from 'uuid';
-import { UsersService } from '@/users/users.service';
-import { error } from 'console';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly usersService: UsersService,
+    private readonly usersService: UserService,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -162,7 +161,7 @@ export class AuthService {
 
   async logout(userId: string) {
     await this.usersService.updateRefreshToken(userId, null);
-    return { message: 'Logged out successfully' };
+    return { message: 'Logged out successfully', success: true };
   }
 
   async validateUser(email: string, password: string): Promise<any> {

@@ -1,4 +1,4 @@
-import { UsersModule } from '@/users/users.module';
+import { UserModule } from '@/user/user.module';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -13,7 +13,7 @@ import { PrismaService } from '@/prisma.service';
 
 @Module({
   imports: [
-    UsersModule,
+    UserModule,
     PassportModule,
     JwtModule.register({
       global: true,

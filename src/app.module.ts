@@ -4,15 +4,17 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
-import { UsersModule } from './users/users.module';
+import { UserModule } from './user/user.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { HabitModule } from './habit/habit.module';
 
 @Module({
   imports: [
     AuthModule,
-    UsersModule,
+    UserModule,
+    HabitModule,
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {
