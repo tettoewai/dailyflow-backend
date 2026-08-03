@@ -26,8 +26,9 @@ export class LoggingInterceptor implements NestInterceptor {
         },
         error: (err) => {
           const status = err?.status ?? 500;
+          const response = err?.getResponse?.() ?? err?.message;
           this.logger.error(
-            `${method} ${url} ${status} +${Date.now() - start}ms\n${err}`,
+            `${method} ${url} ${status} +${Date.now() - start}ms\n${JSON.stringify(response)}`,
           );
         },
       }),

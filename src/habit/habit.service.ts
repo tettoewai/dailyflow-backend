@@ -2,12 +2,42 @@ import { PrismaService } from '@/prisma.service';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateHabitDto } from './dto/create-habit.dto';
 import { FrequencyType, HabitUnit } from '../../generated/prisma/enums';
+import { PaginationDto } from '@/common/dto/pagination.dto';
+import { PaginatedResponse } from '@/common/dto/paginated-response.dto';
+import { Habit } from '../../generated/prisma/browser';
 
 @Injectable()
 export class HabitService {
   constructor(private readonly prisma: PrismaService) {}
-  async getHabit(userId: string) {
-    return this.prisma.habit.findMany({ where: { userId } });
+
+  async getHabit(
+    userId: string,
+    pagination: PaginationDto,
+  ): Promise<PaginatedResponse<Habit>> {
+    const { page = 1, limit = 20 } = pagination;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.prisma.habit.findMany({
+        where: { userId, isDeleted: false, isArchived: false },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.habit.count({
+        where: { userId, isDeleted: false, isArchived: false },
+      }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        page,
+        total,
+        limit,
+        totalPages: total,
+      },
+    };
   }
 
   async createHabit(userId: string, body: CreateHabitDto) {
