@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { jwtConstants } from './constants';
 import { LogInDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ActionResponse } from '@/common/dto/action-response.dto';
 
 @Injectable()
 export class AuthService {
@@ -20,7 +21,7 @@ export class AuthService {
 
   async getTokens(userId: string, email: string) {
     const payload = { sub: userId, email };
-    const [access_token, refresh_token] = await Promise.all([
+    const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
         secret: jwtConstants.secret,
         expiresIn: jwtConstants.accessTokenExpirationTime,
@@ -30,12 +31,12 @@ export class AuthService {
         expiresIn: jwtConstants.refreshTokenExpirationTime,
       }),
     ]);
-    return { access_token, refresh_token };
+    return { accessToken, refreshToken };
   }
 
   async register(
     registerDto: RegisterDto,
-  ): Promise<{ access_token: string; refresh_token: string }> {
+  ): Promise<ActionResponse<{ accessToken: string; refreshToken: string }>> {
     if (registerDto.password !== registerDto.confirmPassword) {
       throw new BadRequestException('Passwords do not match');
     }
@@ -50,13 +51,14 @@ export class AuthService {
       registerDto.name,
     );
     const tokens = await this.getTokens(newUser.id, newUser.email);
-    await this.usersService.updateRefreshToken(
-      newUser.id,
-      tokens.refresh_token,
-    );
+    await this.usersService.updateRefreshToken(newUser.id, tokens.refreshToken);
     return {
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
+      message: 'Registered successfully',
+      success: true,
+      data: {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      },
     };
   }
 
@@ -77,17 +79,21 @@ export class AuthService {
     const tokens = await this.getTokens(guestUser.id, guestUser.email);
     await this.usersService.updateRefreshToken(
       guestUser.id,
-      tokens.refresh_token,
+      tokens.refreshToken,
     );
     return {
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
+      message: 'Logged in successfully',
+      success: true,
+      data: {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      },
     };
   }
 
   async login(
     logInDto: LogInDto,
-  ): Promise<{ access_token: string; refresh_token: string }> {
+  ): Promise<ActionResponse<{ accessToken: string; refreshToken: string }>> {
     const user = await this.usersService.findByEmail(logInDto.email);
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -99,14 +105,21 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
     const tokens = await this.getTokens(user.id, user.email);
-    await this.usersService.updateRefreshToken(user.id, tokens.refresh_token);
+    await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
     return {
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
+      message: 'Logged in successfully',
+      success: true,
+      data: {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      },
     };
   }
 
-  async convertGuest(userId: string, registerDto: RegisterDto) {
+  async convertGuest(
+    userId: string,
+    registerDto: RegisterDto,
+  ): Promise<ActionResponse<{ accessToken: string; refreshToken: string }>> {
     const user = await this.usersService.findById(userId);
 
     if (!user || !user.isGuest) {
@@ -128,22 +141,23 @@ export class AuthService {
     const tokens = await this.getTokens(updatedUser.id, updatedUser.email);
     await this.usersService.updateRefreshToken(
       updatedUser.id,
-      tokens.refresh_token,
+      tokens.refreshToken,
     );
 
     return {
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      user: {
-        id: updatedUser.id,
-        name: updatedUser.name,
-        email: updatedUser.email,
-        isGuest: false,
+      message: 'Guest converted successfully',
+      success: true,
+      data: {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
       },
     };
   }
 
-  async refreshTokens(userId: string, refreshToken: string) {
+  async refreshTokens(
+    userId: string,
+    refreshToken: string,
+  ): Promise<ActionResponse<{ accessToken: string; refreshToken: string }>> {
     const user = await this.usersService.findById(userId);
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -155,16 +169,26 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
     const tokens = await this.getTokens(user.id, user.email);
-    await this.usersService.updateRefreshToken(user.id, tokens.refresh_token);
-    return tokens;
+    await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
+    return {
+      message: 'Tokens refreshed successfully',
+      success: true,
+      data: {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      },
+    };
   }
 
-  async logout(userId: string) {
+  async logout(userId: string): Promise<ActionResponse> {
     await this.usersService.updateRefreshToken(userId, null);
     return { message: 'Logged out successfully', success: true };
   }
 
-  async validateUser(email: string, password: string): Promise<any> {
+  async validateUser(
+    email: string,
+    password: string,
+  ): Promise<ActionResponse<{ email: string; sub: string }>> {
     const user = await this.usersService.findByEmail(email);
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -175,6 +199,10 @@ export class AuthService {
     if (!isMatch) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    return { email: user.email, sub: user.id };
+    return {
+      message: 'User validated successfully',
+      success: true,
+      data: { email: user.email, sub: user.id },
+    };
   }
 }

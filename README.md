@@ -83,15 +83,15 @@ Swagger docs: `http://localhost:3000/docs`
 
 ## API Overview
 
-| Method | Path              | Auth     | Description                |
-|--------|-------------------|----------|----------------------------|
-| GET    | `/`               | Public   | Health / hello             |
-| POST   | `/auth/register`  | Public   | Register a new user        |
-| POST   | `/auth/login`     | Public   | Login with email/password  |
-| POST   | `/auth/login/guest` | Public | Login as guest             |
-| POST   | `/auth/refresh`   | Refresh  | Refresh access token       |
-| POST   | `/auth/logout`    | JWT      | Invalidate refresh token   |
-| GET    | `/profile`        | JWT      | Get current user profile   |
+| Method | Path                | Auth    | Description               |
+| ------ | ------------------- | ------- | ------------------------- |
+| GET    | `/`                 | Public  | Health / hello            |
+| POST   | `/auth/register`    | Public  | Register a new user       |
+| POST   | `/auth/login`       | Public  | Login with email/password |
+| POST   | `/auth/login/guest` | Public  | Login as guest            |
+| POST   | `/auth/refresh`     | Refresh | Refresh access token      |
+| POST   | `/auth/logout`      | JWT     | Invalidate refresh token  |
+| GET    | `/profile`          | JWT     | Get current user profile  |
 
 JWT is required globally except on routes marked `@Public()`.  
 Send the access token as `Authorization: Bearer <token>`.  
@@ -117,7 +117,7 @@ Refresh uses the refresh token via the refresh auth guard.
 }
 ```
 
-Auth responses return `{ "access_token": "...", "refresh_token": "..." }`.
+Auth responses return `{ "accessToken": "...", "refreshToken": "..." }`.
 
 ## Project Structure
 

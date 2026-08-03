@@ -10,6 +10,7 @@ import { PaginationDto } from '@/common/dto/pagination.dto';
 import { PaginatedResponse } from '@/common/dto/paginated-response.dto';
 import { Habit } from '../../generated/prisma/browser';
 import { UpdateHabitDto } from './dto/update-habit.dto';
+import { ActionResponse } from '@/common/dto/action-response.dto';
 
 @Injectable()
 export class HabitService {
@@ -45,7 +46,12 @@ export class HabitService {
     };
   }
 
-  async createHabit(userId: string, body: CreateHabitDto) {
+  async createHabit(
+    userId: string,
+    body: CreateHabitDto,
+  ): Promise<
+    ActionResponse<{ id: string; title: string; icon: string; color: string }>
+  > {
     // 1. Duplicate title check
     const existingHabit = await this.prisma.habit.findFirst({
       where: { userId, isDeleted: false, title: body.title },
@@ -124,7 +130,11 @@ export class HabitService {
     });
 
     // 6. Return created habit
-    return newHabit;
+    return {
+      message: 'Habit created successfully',
+      success: true,
+      data: newHabit,
+    };
   }
 
   async updateHabit(userId: string, habitId: string, body: UpdateHabitDto) {
@@ -255,6 +265,91 @@ export class HabitService {
       },
       select: { id: true, title: true },
     });
-    return updated;
+    return {
+      message: 'Habit updated successfully',
+      success: true,
+      data: updated,
+    };
+  }
+
+  async archiveHabit(
+    userId: string,
+    habitId: string,
+  ): Promise<ActionResponse<{ id: string; title: string }>> {
+    // 1. Verify habit exists and belongs to user
+    const existingHabit = await this.prisma.habit.findUnique({
+      where: { id: habitId, userId, isDeleted: false, isArchived: false },
+      select: { id: true, title: true },
+    });
+
+    if (!existingHabit) {
+      throw new NotFoundException('Habit not found');
+    }
+
+    // 2. Archive habit
+    await this.prisma.habit.update({
+      where: { id: habitId },
+      data: { isArchived: true },
+    });
+
+    return {
+      message: 'Habit archived successfully',
+      success: true,
+      data: existingHabit,
+    };
+  }
+
+  async unarchiveHabit(
+    userId: string,
+    habitId: string,
+  ): Promise<ActionResponse<{ id: string; title: string }>> {
+    // 1. Verify habit exists and belongs to user
+    const existingHabit = await this.prisma.habit.findUnique({
+      where: { id: habitId, userId, isDeleted: false, isArchived: true },
+      select: { id: true, title: true },
+    });
+
+    if (!existingHabit) {
+      throw new NotFoundException('Habit not found');
+    }
+
+    // 2. Archive habit
+    await this.prisma.habit.update({
+      where: { id: habitId },
+      data: { isArchived: false },
+    });
+
+    return {
+      message: 'Habit unarchived successfully',
+      success: true,
+      data: existingHabit,
+    };
+  }
+
+  async deleteHabit(
+    userId: string,
+    habitId: string,
+  ): Promise<ActionResponse<{ id: string; title: string }>> {
+    // 1. Verify habit exists and belongs to user
+    const existingHabit = await this.prisma.habit.findUnique({
+      where: { id: habitId, userId, isDeleted: false, isArchived: false },
+      select: { id: true, title: true },
+    });
+
+    if (!existingHabit) {
+      throw new NotFoundException('Habit not found');
+    }
+
+    // 2. Delete habit
+    await this.prisma.habit.update({
+      where: { id: habitId },
+      data: { isDeleted: true },
+    });
+
+    return {
+      message: 'Habit deleted successfully',
+      success: true,
+      data: existingHabit,
+    };
   }
 }

@@ -6,6 +6,7 @@ import { PaginationDto } from '@/common/dto/pagination.dto';
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -47,5 +48,41 @@ export class HabitController {
     @Body() body: UpdateHabitDto,
   ) {
     return this.habitService.updateHabit(user.sub, habitId, body);
+  }
+
+  @Patch(':id/archive')
+  @ApiOperation({ summary: 'Archive a habit' })
+  @ApiParam({ name: 'id', description: 'Habit UUID' })
+  @ApiResponse({ status: 200, description: 'Habit archived successfully' })
+  @ApiResponse({ status: 404, description: 'Habit not found' })
+  archiveHabit(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) habitId: string,
+  ) {
+    return this.habitService.archiveHabit(user.sub, habitId);
+  }
+
+  @Patch(':id/unarchive')
+  @ApiOperation({ summary: 'Unarchive a habit' })
+  @ApiParam({ name: 'id', description: 'Habit UUID' })
+  @ApiResponse({ status: 200, description: 'Habit unarchived successfully' })
+  @ApiResponse({ status: 404, description: 'Habit not found' })
+  unarchiveHabit(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) habitId: string,
+  ) {
+    return this.habitService.unarchiveHabit(user.sub, habitId);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete a habit' })
+  @ApiParam({ name: 'id', description: 'Habit UUID' })
+  @ApiResponse({ status: 200, description: 'Habit deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Habit not found' })
+  deleteHabit(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) habitId: string,
+  ) {
+    return this.habitService.deleteHabit(user.sub, habitId);
   }
 }
