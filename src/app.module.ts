@@ -9,12 +9,14 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { HabitModule } from './habit/habit.module';
+import { PrismaModule } from './prisma.module';
 
 @Module({
   imports: [
     AuthModule,
     UserModule,
     HabitModule,
+    PrismaModule,
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {

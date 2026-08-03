@@ -7,7 +7,6 @@ import { AuthService } from './auth.service';
 import { jwtConstants } from './constants';
 import { GuestCleanUpService } from './guest-cleanup.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
-import { LocalStrategy } from './strategies/local.strategy';
 import { RefreshTokenStrategy } from './strategies/refreshToken.strategy';
 import { PrismaService } from '@/prisma.service';
 
@@ -26,7 +25,6 @@ import { PrismaService } from '@/prisma.service';
   controllers: [AuthController],
   providers: [
     AuthService,
-    LocalStrategy,
     JwtStrategy,
     RefreshTokenStrategy,
     GuestCleanUpService,
