@@ -1,4 +1,4 @@
 import { Controller } from '@nestjs/common';
 
-@Controller('habit')
+@Controller('category')
 export class CategoryController {}

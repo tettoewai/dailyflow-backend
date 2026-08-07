@@ -41,7 +41,7 @@ export class HabitService {
         page,
         total,
         limit,
-        totalPages: total,
+        totalPages: Math.ceil(total / limit),
       },
     };
   }
