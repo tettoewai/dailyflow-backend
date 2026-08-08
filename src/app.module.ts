@@ -10,12 +10,14 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { HabitModule } from './habit/habit.module';
 import { PrismaModule } from './prisma.module';
+import { CategoryModule } from './category/category.module';
 
 @Module({
   imports: [
     AuthModule,
     UserModule,
     HabitModule,
+    CategoryModule,
     PrismaModule,
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([

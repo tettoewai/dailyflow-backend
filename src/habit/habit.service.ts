@@ -2,6 +2,8 @@ import { PrismaService } from '@/prisma.service';
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreateHabitDto } from './dto/create-habit.dto';
@@ -11,10 +13,12 @@ import { PaginatedResponse } from '@/common/dto/paginated-response.dto';
 import { Habit } from '../../generated/prisma/browser';
 import { UpdateHabitDto } from './dto/update-habit.dto';
 import { ActionResponse } from '@/common/dto/action-response.dto';
+import { Prisma } from '../../generated/prisma/client';
 
 @Injectable()
 export class HabitService {
   constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(HabitService.name);
 
   async getHabit(
     userId: string,
@@ -25,13 +29,13 @@ export class HabitService {
 
     const [data, total] = await Promise.all([
       this.prisma.habit.findMany({
-        where: { userId, isDeleted: false, isArchived: false },
+        where: { userId, isArchived: false },
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.habit.count({
-        where: { userId, isDeleted: false, isArchived: false },
+        where: { userId, isArchived: false },
       }),
     ]);
 
@@ -52,19 +56,7 @@ export class HabitService {
   ): Promise<
     ActionResponse<{ id: string; title: string; icon: string; color: string }>
   > {
-    // 1. Duplicate title check
-    const existingHabit = await this.prisma.habit.findFirst({
-      where: { userId, isDeleted: false, title: body.title },
-      select: { id: true },
-    });
-
-    if (existingHabit) {
-      throw new BadRequestException(
-        `Habit with title "${body.title}" already exists.`,
-      );
-    }
-
-    // 2. Validate conditional requirements
+    // Validate conditional requirements
     if (body.frequencyType === FrequencyType.WEEKLY && !body.selectedDays) {
       throw new BadRequestException(
         'Selected days are required for weekly habits.',
@@ -77,7 +69,7 @@ export class HabitService {
       );
     }
 
-    // 3. Prepare habit data (parse customSchedule if provided)
+    // Prepare habit data (parse customSchedule if provided)
     const habitData: any = {
       userId,
       title: body.title,
@@ -92,7 +84,7 @@ export class HabitService {
       customSchedule: body.customSchedule,
     };
 
-    // 4. Check if tags exist (if provided)
+    // Check if tags exist (if provided)
     if (body.tagIds && body.tagIds.length) {
       const foundTags = await this.prisma.tag.findMany({
         where: { id: { in: body.tagIds } },
@@ -108,39 +100,54 @@ export class HabitService {
       }
     }
 
-    // 5. Create habit and tags in a transaction
-    const newHabit = await this.prisma.$transaction(async (tx) => {
-      // Create habit
-      const habit = await tx.habit.create({
-        data: habitData,
-        select: { id: true, title: true, icon: true, color: true },
+    try {
+      // Create habit and tags in a transaction
+      const newHabit = await this.prisma.$transaction(async (tx) => {
+        const habit = await tx.habit.create({
+          data: habitData,
+          select: {
+            id: true,
+            title: true,
+            icon: true,
+            color: true,
+          },
+        });
+
+        if (body.tagIds?.length) {
+          await tx.habitTag.createMany({
+            data: body.tagIds.map((tagId) => ({
+              habitId: habit.id,
+              tagId,
+            })),
+          });
+        }
+
+        return habit;
       });
 
-      // Create habit-tag links if any
-      if (body.tagIds && body.tagIds.length) {
-        await tx.habitTag.createMany({
-          data: body.tagIds.map((tagId) => ({
-            habitId: habit.id,
-            tagId,
-          })),
-        });
+      // Return created habit
+      return {
+        message: 'Habit created successfully',
+        success: true,
+        data: newHabit,
+      };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(`Habit "${body.title}" already exists.`);
       }
 
-      return habit;
-    });
-
-    // 6. Return created habit
-    return {
-      message: 'Habit created successfully',
-      success: true,
-      data: newHabit,
-    };
+      this.logger.error(error);
+      throw new InternalServerErrorException('Failed to create habit');
+    }
   }
 
   async updateHabit(userId: string, habitId: string, body: UpdateHabitDto) {
     // 1. Verify habit exists and belong to user
     const existingHabit = await this.prisma.habit.findUnique({
-      where: { id: habitId, userId, isDeleted: false, isArchived: false },
+      where: { id: habitId, userId, isArchived: false },
       select: {
         id: true,
         title: true,
@@ -154,13 +161,12 @@ export class HabitService {
       throw new NotFoundException('Habit not found');
     }
 
-    // 2. Duplicate tital check (only if title is being changed)
+    // 2. Duplicate title check (only if title is being changed)
     if (body.title && body.title !== existingHabit.title) {
       const duplicate = await this.prisma.habit.findFirst({
         where: {
           title: body.title,
           userId,
-          isDeleted: false,
           isArchived: false,
           id: { not: habitId },
         },
@@ -172,13 +178,13 @@ export class HabitService {
       }
     }
 
-    //3. Validate conditonal requirements (only if relvent fields change)
+    //3. Validate conditional requirements (only if relevent fields change)
     const frequencyType = body.frequencyType ?? existingHabit.frequencyType;
 
     if (
       frequencyType === FrequencyType.WEEKLY &&
       body.selectedDays === undefined &&
-      !existingHabit.selectedDays
+      !(existingHabit.selectedDays && existingHabit.selectedDays.length > 0)
     ) {
       throw new BadRequestException(
         'Selected days are required for weekly frequency',
@@ -195,75 +201,77 @@ export class HabitService {
       );
     }
 
-    // 4. Handle tag update (if provided)
-    if (body.tagIds !== undefined) {
-      // Fetch current tags
-      const currentTags = await this.prisma.habitTag.findMany({
-        where: { habitId },
-        select: { tagId: true },
-      });
-      const currentTagIds = currentTags.map((t) => t.tagId).sort();
-      const incomingTagIds = [...body.tagIds].sort();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // 4. Handle tag update (if provided)
+      if (body.tagIds !== undefined) {
+        // Fetch current tags
+        const currentTags = await tx.habitTag.findMany({
+          where: { habitId },
+          select: { tagId: true },
+        });
+        const currentTagIds = currentTags.map((t) => t.tagId).sort();
+        const incomingTagIds = [...body.tagIds].sort();
 
-      // Only update if actually changed
-      const hasChanged =
-        currentTagIds.length !== incomingTagIds.length ||
-        currentTagIds.some((id, i) => id !== incomingTagIds[i]);
+        // Only update if actually changed
+        const hasChanged =
+          currentTagIds.length !== incomingTagIds.length ||
+          currentTagIds.some((id, i) => id !== incomingTagIds[i]);
 
-      if (hasChanged) {
-        // Validate all incoming tags exist
-        if (body.tagIds.length) {
-          const foundTags = await this.prisma.tag.findMany({
-            where: { id: { in: body.tagIds } },
-            select: { id: true },
-          });
+        if (hasChanged) {
+          // Validate all incoming tags exist
+          if (body.tagIds.length) {
+            const foundTags = await tx.tag.findMany({
+              where: { id: { in: body.tagIds } },
+              select: { id: true },
+            });
 
-          if (foundTags.length !== body.tagIds.length) {
-            const foundIds = new Set(foundTags.map((t) => t.id));
-            const missing = body.tagIds.filter((id) => !foundIds.has(id));
-            throw new BadRequestException(
-              `Tags with IDs [${missing.join(', ')}] not found.`,
-            );
+            if (foundTags.length !== body.tagIds.length) {
+              const foundIds = new Set(foundTags.map((t) => t.id));
+              const missing = body.tagIds.filter((id) => !foundIds.has(id));
+              throw new BadRequestException(
+                `Tags with IDs [${missing.join(', ')}] not found.`,
+              );
+            }
+          }
+
+          // Replace all
+          await tx.habitTag.deleteMany({ where: { habitId } });
+
+          if (body.tagIds.length) {
+            await tx.habitTag.createMany({
+              data: body.tagIds.map((tagId) => ({ habitId, tagId })),
+            });
           }
         }
-
-        // Replace all
-        await this.prisma.habitTag.deleteMany({ where: { habitId } });
-
-        if (body.tagIds.length) {
-          await this.prisma.habitTag.createMany({
-            data: body.tagIds.map((tagId) => ({ habitId, tagId })),
-          });
-        }
       }
-    }
 
-    // 5. Update habit (only provided fields)
-    const updated = await this.prisma.habit.update({
-      where: { id: habitId },
-      data: {
-        ...(body.title !== undefined && { title: body.title }),
-        ...(body.description !== undefined && {
-          description: body.description ?? null,
-        }),
-        ...(body.icon !== undefined && { icon: body.icon }),
-        ...(body.color !== undefined && { color: body.color }),
-        ...(body.frequencyType !== undefined && {
-          frequencyType: body.frequencyType,
-        }),
-        ...(body.target !== undefined && { target: body.target }),
-        ...(body.unit !== undefined && { unit: body.unit }),
-        ...(body.customSchedule !== undefined && {
-          customSchedule: body.customSchedule ?? null,
-        }),
-        ...(body.selectedDays !== undefined && {
-          selectedDays: body.selectedDays,
-        }),
-        ...(body.categoryId !== undefined && {
-          categoryId: body.categoryId ?? null,
-        }),
-      },
-      select: { id: true, title: true },
+      // 5. Update habit (only provided fields)
+      return await tx.habit.update({
+        where: { id: habitId },
+        data: {
+          ...(body.title !== undefined && { title: body.title }),
+          ...(body.description !== undefined && {
+            description: body.description ?? null,
+          }),
+          ...(body.icon !== undefined && { icon: body.icon }),
+          ...(body.color !== undefined && { color: body.color }),
+          ...(body.frequencyType !== undefined && {
+            frequencyType: body.frequencyType,
+          }),
+          ...(body.target !== undefined && { target: body.target }),
+          ...(body.unit !== undefined && { unit: body.unit }),
+          ...(body.customSchedule !== undefined && {
+            customSchedule: body.customSchedule ?? null,
+          }),
+          ...(body.selectedDays !== undefined && {
+            selectedDays: body.selectedDays,
+          }),
+          ...(body.categoryId !== undefined && {
+            categoryId: body.categoryId ?? null,
+          }),
+        },
+        select: { id: true, title: true },
+      });
     });
     return {
       message: 'Habit updated successfully',
@@ -278,7 +286,7 @@ export class HabitService {
   ): Promise<ActionResponse<{ id: string; title: string }>> {
     // 1. Verify habit exists and belongs to user
     const existingHabit = await this.prisma.habit.findUnique({
-      where: { id: habitId, userId, isDeleted: false, isArchived: false },
+      where: { id: habitId, userId, isArchived: false },
       select: { id: true, title: true },
     });
 
@@ -289,7 +297,7 @@ export class HabitService {
     // 2. Archive habit
     await this.prisma.habit.update({
       where: { id: habitId },
-      data: { isArchived: true },
+      data: { isArchived: true, archivedAt: new Date() },
     });
 
     return {
@@ -305,7 +313,7 @@ export class HabitService {
   ): Promise<ActionResponse<{ id: string; title: string }>> {
     // 1. Verify habit exists and belongs to user
     const existingHabit = await this.prisma.habit.findUnique({
-      where: { id: habitId, userId, isDeleted: false, isArchived: true },
+      where: { id: habitId, userId, isArchived: true },
       select: { id: true, title: true },
     });
 
@@ -332,7 +340,7 @@ export class HabitService {
   ): Promise<ActionResponse<{ id: string; title: string }>> {
     // 1. Verify habit exists and belongs to user
     const existingHabit = await this.prisma.habit.findUnique({
-      where: { id: habitId, userId, isDeleted: false, isArchived: false },
+      where: { id: habitId, userId, isArchived: false },
       select: { id: true, title: true },
     });
 
@@ -341,9 +349,8 @@ export class HabitService {
     }
 
     // 2. Delete habit
-    await this.prisma.habit.update({
+    await this.prisma.habit.delete({
       where: { id: habitId },
-      data: { isDeleted: true },
     });
 
     return {
